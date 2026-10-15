@@ -1,0 +1,12 @@
+**
+!backend/
+!backend/app/
+!backend/app/*.py
+!backend/migrations/
+!backend/migrations/*.py
+!backend/migrations/versions/
+!backend/migrations/versions/*.py
+!backend/alembic.ini
+!backend/requirements.runtime.lock
+!deploy/
+!deploy/Dockerfile
