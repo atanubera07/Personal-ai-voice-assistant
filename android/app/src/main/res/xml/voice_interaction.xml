@@ -1,0 +1,3 @@
+<voice-interaction-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:sessionService="in.personal.agent.AgentSessionService"
+    android:supportsAssist="true" android:supportsLaunchVoiceAssistFromKeyguard="false" />

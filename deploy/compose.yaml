@@ -1,0 +1,80 @@
+# Run from the repository root: docker compose --env-file deploy/.env -f deploy/compose.yaml ...
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: agent
+      POSTGRES_DB: agent
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set a random database password}
+    volumes:
+      - database:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agent -d agent"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks: [private]
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: personal-agent:0.6.0
+    environment: &backend_environment
+      DATABASE_URL: ${DATABASE_URL:?Set the PostgreSQL connection URL}
+      SIMULATION: "false"
+      PUBLIC_ORIGIN: https://${DOMAIN:?Set the HTTPS hostname}
+      OWNER_SECRET: ${OWNER_SECRET:?Set a random legacy secret, disabled in production}
+      JWT_SECRET: ${JWT_SECRET:?Set a random signing secret}
+      DATA_KEY: ${DATA_KEY:?Set a Fernet encryption key}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:?Set a random webhook secret}
+      PREVIOUS_DATA_KEYS: ${PREVIOUS_DATA_KEYS:-}
+      CALENDAR_PROVIDER: ${CALENDAR_PROVIDER:-disabled}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REFRESH_TOKEN: ${GOOGLE_REFRESH_TOKEN:-}
+      GOOGLE_CALENDAR_ID: ${GOOGLE_CALENDAR_ID:-primary}
+      # Safe only because api is not published and only controlled containers join this network.
+      FORWARDED_ALLOW_IPS: "*"
+    depends_on:
+      db:
+        condition: service_healthy
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    networks: [private]
+  migrate:
+    image: personal-agent:0.6.0
+    environment: *backend_environment
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles: [ops]
+    networks: [private]
+  maintenance:
+    image: personal-agent:0.6.0
+    environment: *backend_environment
+    command: ["python", "-m", "app.admin", "cleanup"]
+    profiles: [ops]
+    networks: [private]
+  proxy:
+    image: caddy:2-alpine
+    environment:
+      DOMAIN: ${DOMAIN:?Set hostname}
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [api]
+    restart: unless-stopped
+    networks: [private]
+networks:
+  private:
+volumes:
+  database:
+  caddy_data:
+  caddy_config:
